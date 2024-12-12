@@ -71,6 +71,12 @@ def extract_benefits_text(file_content):
     
     return benefits_text, vacation_text, holidays_text
 
+def truncate_text(text, max_length):
+    """Truncate text to maximum length and add indicator if truncated."""
+    if len(text) > max_length:
+        return text[:max_length-4] + "..."
+    return text
+
 def process_files(input_folder_path, output_folder_path, output_filename, max_cell_length=32000):
     """Process all files and create Excel output."""
     # Create output folder if it doesn't exist
@@ -92,19 +98,16 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
                 if extracted_texts and extracted_texts[0]:  # If benefits text was found
                     benefits_text, vacation_text, holidays_text = extracted_texts
                     
-                    # Split texts into chunks if needed
+                    # Truncate vacation and holidays sections if they exceed cell limit
+                    vacation_text = truncate_text(vacation_text, max_cell_length)
+                    holidays_text = truncate_text(holidays_text, max_cell_length)
+                    
+                    # Split full benefits text into chunks if needed
                     benefits_chunks = [benefits_text[i:i+max_cell_length] 
                                     for i in range(0, len(benefits_text), max_cell_length)]
-                    vacation_chunks = [vacation_text[i:i+max_cell_length] 
-                                    for i in range(0, len(vacation_text), max_cell_length)]
-                    holidays_chunks = [holidays_text[i:i+max_cell_length] 
-                                    for i in range(0, len(holidays_text), max_cell_length)]
                     
-                    # Create row with filename and all text chunks
-                    row = ([filename[:-4]] + 
-                          benefits_chunks + 
-                          vacation_chunks + 
-                          holidays_chunks)
+                    # Create row starting with filename, vacation, holidays, then benefits chunks
+                    row = [filename[:-4], vacation_text, holidays_text] + benefits_chunks
                     results.append(row)
         except Exception as e:
             print(f"Error processing {filename}: {str(e)}")
@@ -112,17 +115,19 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
     if not results:
         print("No files were processed successfully.")
         return 0
-        
-    # Find maximum number of chunks for each section
-    max_benefits = max(len([col for col in row[1:] if col]) for row in results)
     
-    # Create column names
-    columns = ['Filename']
-    columns.extend([f'Benefits_Text_{i+1}' for i in range(max_benefits)])
-    columns.extend(['Vacation_Section'])
-    columns.extend(['Holidays_Section'])
+    # Find maximum number of benefits chunks needed
+    max_benefits_chunks = max(len(row) - 3 for row in results)  # -3 for filename, vacation, holidays
     
-    # Create DataFrame with all columns
+    # Create column names in the desired order
+    columns = [
+        'Filename',
+        'Vacation_Section',
+        'Holidays_Section'
+    ]
+    columns.extend([f'Benefits_Text_{i+1}' for i in range(max_benefits_chunks)])
+    
+    # Create DataFrame
     df = pd.DataFrame(results, columns=columns)
     
     # Save to Excel
