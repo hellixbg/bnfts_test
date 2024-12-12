@@ -7,22 +7,24 @@ def parse_filename(filename):
     """Extract initial portion and version number from filename."""
     # Skip files with (1) in the name
     if "(1)" in filename:
-        return None, None
+        return None, None, None
         
     match = re.match(r'(\d{4}-\d+)\.(\d+)\.txt$', filename)
     if match:
-        return match.group(1), float(match.group(2))
-    return None, None
+        wd_no = match.group(1)
+        revision_no = match.group(2)
+        return wd_no, revision_no, float(revision_no)  # Return float version for comparison
+    return None, None, None
 
 def get_latest_versions(folder_path):
     """Find the latest version of each initial portion."""
     files_dict = {}
     
     for filename in os.listdir(folder_path):
-        initial_portion, version = parse_filename(filename)
-        if initial_portion:
-            if initial_portion not in files_dict or version > files_dict[initial_portion][1]:
-                files_dict[initial_portion] = (filename, version)
+        wd_no, revision_no, version = parse_filename(filename)
+        if wd_no:
+            if wd_no not in files_dict or version > files_dict[wd_no][2]:
+                files_dict[wd_no] = (filename, revision_no, version)
     
     return [file_info[0] for file_info in files_dict.values()]
 
@@ -98,6 +100,9 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
                 if extracted_texts and extracted_texts[0]:  # If benefits text was found
                     benefits_text, vacation_text, holidays_text = extracted_texts
                     
+                    # Get WD_No and Revision_No from filename
+                    wd_no, revision_no, _ = parse_filename(filename)
+                    
                     # Truncate vacation and holidays sections if they exceed cell limit
                     vacation_text = truncate_text(vacation_text, max_cell_length)
                     holidays_text = truncate_text(holidays_text, max_cell_length)
@@ -106,8 +111,8 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
                     benefits_chunks = [benefits_text[i:i+max_cell_length] 
                                     for i in range(0, len(benefits_text), max_cell_length)]
                     
-                    # Create row starting with filename, vacation, holidays, then benefits chunks
-                    row = [filename[:-4], vacation_text, holidays_text] + benefits_chunks
+                    # Create row with new column order
+                    row = [wd_no, revision_no, vacation_text, holidays_text] + benefits_chunks
                     results.append(row)
         except Exception as e:
             print(f"Error processing {filename}: {str(e)}")
@@ -117,11 +122,12 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
         return 0
     
     # Find maximum number of benefits chunks needed
-    max_benefits_chunks = max(len(row) - 3 for row in results)  # -3 for filename, vacation, holidays
+    max_benefits_chunks = max(len(row) - 4 for row in results)  # -4 for wd_no, revision, vacation, holidays
     
     # Create column names in the desired order
     columns = [
-        'Filename',
+        'WD_No',
+        'Revision_No',
         'Vacation_Section',
         'Holidays_Section'
     ]
