@@ -59,7 +59,17 @@ def extract_benefits_text(file_content):
             end_pos = start_pos + match.start()
             break
     
-    return file_content[start_pos:end_pos].strip()
+    benefits_text = file_content[start_pos:end_pos].strip()
+    
+    # Extract vacation section
+    vacation_match = re.search(r'VACATION:(.*?)HOLIDAYS:', benefits_text, re.DOTALL)
+    vacation_text = vacation_match.group(1).strip() if vacation_match else ""
+    
+    # Extract holidays section
+    holidays_match = re.search(r'HOLIDAYS:(.*?)$', benefits_text, re.DOTALL)
+    holidays_text = holidays_match.group(1).strip() if holidays_match else ""
+    
+    return benefits_text, vacation_text, holidays_text
 
 def process_files(input_folder_path, output_folder_path, output_filename, max_cell_length=32000):
     """Process all files and create Excel output."""
@@ -77,25 +87,45 @@ def process_files(input_folder_path, output_folder_path, output_filename, max_ce
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
-                benefits_text = extract_benefits_text(content)
+                extracted_texts = extract_benefits_text(content)
                 
-                if benefits_text:
-                    # Split text into chunks if needed
-                    text_chunks = [benefits_text[i:i+max_cell_length] 
-                                 for i in range(0, len(benefits_text), max_cell_length)]
+                if extracted_texts and extracted_texts[0]:  # If benefits text was found
+                    benefits_text, vacation_text, holidays_text = extracted_texts
                     
-                    # Create row with filename (without .txt) and text chunks
-                    row = [filename[:-4]] + text_chunks
+                    # Split texts into chunks if needed
+                    benefits_chunks = [benefits_text[i:i+max_cell_length] 
+                                    for i in range(0, len(benefits_text), max_cell_length)]
+                    vacation_chunks = [vacation_text[i:i+max_cell_length] 
+                                    for i in range(0, len(vacation_text), max_cell_length)]
+                    holidays_chunks = [holidays_text[i:i+max_cell_length] 
+                                    for i in range(0, len(holidays_text), max_cell_length)]
+                    
+                    # Create row with filename and all text chunks
+                    row = ([filename[:-4]] + 
+                          benefits_chunks + 
+                          vacation_chunks + 
+                          holidays_chunks)
                     results.append(row)
         except Exception as e:
             print(f"Error processing {filename}: {str(e)}")
     
-    # Find maximum number of columns needed
-    max_cols = max(len(row) for row in results) if results else 2
-    columns = ['Filename'] + [f'Benefits_Text_{i+1}' for i in range(max_cols-1)]
+    if not results:
+        print("No files were processed successfully.")
+        return 0
+        
+    # Find maximum number of chunks for each section
+    max_benefits = max(len([col for col in row[1:] if col]) for row in results)
     
-    # Create DataFrame and save to Excel
+    # Create column names
+    columns = ['Filename']
+    columns.extend([f'Benefits_Text_{i+1}' for i in range(max_benefits)])
+    columns.extend(['Vacation_Section'])
+    columns.extend(['Holidays_Section'])
+    
+    # Create DataFrame with all columns
     df = pd.DataFrame(results, columns=columns)
+    
+    # Save to Excel
     df.to_excel(output_file_path, index=False)
     
     return len(results)
